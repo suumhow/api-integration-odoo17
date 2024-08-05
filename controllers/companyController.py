@@ -2,7 +2,10 @@ from odoo import http, fields as odoo_fields, api
 from odoo.http import request
 import json
 from datetime import date, datetime
-import traceback
+import traceback    
+import logging
+
+_logger = logging.getLogger(__name__)
 
 class CompanyController(http.Controller):
   def _json_serialize(self, value):
@@ -15,20 +18,13 @@ class CompanyController(http.Controller):
   @http.route('/api/companies', type='http', auth='public', methods=['GET'], csrf=False)
   def get_companies(self):
       try:
-          # Force reload of ir.model.fields
-          request.env['ir.model.fields'].clear_caches()
-          request.env['res.partner'].clear_caches()
+        
           
-          # Reload the model
-          request.env.cr.execute("SELECT * FROM ir_model_fields WHERE model = 'res.partner' AND name IN ('x_catch_up_id', 'x_catch_up_url')")
-          new_fields = request.env.cr.fetchall()
-          if new_fields:
-              request.env['res.partner']._add_field('x_catch_up_id', odoo_fields.Char(string='CU ID'))
-              request.env['res.partner']._add_field('x_catch_up_url', odoo_fields.Char(string='CU URL'))
-              request.env['res.partner']._setup_complete()
-
           companies = request.env['res.partner'].sudo().search([('is_company', '=', True)])
-          partner_fields = request.env['res.partner'].sudo().fields_get()
+          partner_model = request.env['ir.model'].sudo().search([('name', '=', 'res.partner')])
+
+          partner_fields = request.env['ir.model.fields'].sudo().search([('model_id', '=', partner_model.id)])
+          _logger.info(f"partner_fields: {partner_fields}")
           
           blacklist = [
               'image_1920', 'image_1024', 'image_512', 'image_256', 'image_128',
@@ -46,12 +42,7 @@ class CompanyController(http.Controller):
                       except Exception as e:
                           company_data[field] = str(e)
               
-              # Explicitly check for new fields
-              for new_field in ['x_catch_up_id', 'x_catch_up_url']:
-                  if new_field in company:
-                      company_data[new_field] = self._json_serialize(company[new_field])
-                  else:
-                      company_data[new_field] = "Field not found in model"
+            
               
               data.append(company_data)
           
