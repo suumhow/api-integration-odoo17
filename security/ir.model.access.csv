@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_res_partner_public,res.partner.public,base.model_res_partner,base.group_public,1,0,0,0
+access_crm_lead_public,crm.lead.public,crm.model_crm_lead,base.group_public,1,0,0,0
+access_crm_stage_public,crm.stage.public,crm.model_crm_stage,base.group_public,1,0,0,0
+access_res_users_public,res.users.public,base.model_res_users,base.group_public,1,0,0,0
