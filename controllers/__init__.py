@@ -1,6 +1,4 @@
 from . import main
-from . import contactController
-from . import companyController
+from . import partnerController
 from . import userController
 from . import opportunityController
-from . import opportunityStatusController

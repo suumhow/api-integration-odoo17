@@ -1,4 +1,5 @@
-
+from odoo import models, fields, api
+from datetime import date, datetime
 import requests
 import json
 import logging
@@ -10,85 +11,209 @@ class CrmLead(models.Model):
   _inherit = 'crm.lead'
 
   x_catch_up_id = fields.Char(string='Catch Up ID', readonly=True)
-  x_catch_up_url = fields.Char(string='Catch Up Url', readonly=True)
+  x_catch_up_url = fields.Html(string='Catch Up Url', readonly=True)
 
+  def _json_serialize(self, value):
+      if isinstance(value, (datetime, date)):
+          return value.isoformat()
+      if isinstance(value, models.BaseModel):
+          return value.id
+      return value
+  
+  def get_all_opportunities(self):
+      opportunities = self.env['crm.lead'].search([('type', '=', 'opportunity')])    #   et all the active opportunities
+    
+      # Standard fields we want to include
+      standard_fields = [
+            'id', 'display_name', 'expected_revenue', 'partner_id', "priority",
+    "probability",
+    "prorated_revenue",
+    "recurring_plan",
+    "recurring_revenue",
+    "date_deadline",
+    "recurring_revenue_monthly","stage_id","user_id","active"
+    
+            # Add any other standard fields you want to include
+        ]
+ 
+      
 
+        # Get all custom fields
+      custom_fields = self.env['ir.model.fields'].search([
+      ('model', '=', 'crm.lead'),
+      ('name', 'like', 'x_%')  # Custom fields typically start with 'x_'
+      ]).mapped('name')
 
-  def _prepare_opportunity_data(self):
-      _logger.info(f"Preparing opportunity data for CrmLead ID: {self.id}")
-      data = {
-          'id': self.id,
-          'x_catch_up_id': self.x_catch_up_id,
-          'name': self.name,
-          'partner_id': self.partner_id.id if self.partner_id else None,
-          'partner_name': self.partner_id.name if self.partner_id else None,
-          'email': self.email_from,
-          'phone': self.phone,
-          'stage_id': self.stage_id.id,
-          'stage_name': self.stage_id.name,
-          'expected_revenue': self.expected_revenue,
-          'probability': self.probability,
-          'date_deadline': str(self.date_deadline) if self.date_deadline else None,
-          'description': self.description,
-          'user_id': self.user_id.id if self.user_id else None,
-          'user_name': self.user_id.name if self.user_id else None,
-          'team_id': self.team_id.id if self.team_id else None,
-          'team_name': self.team_id.name if self.team_id else None,
-          'company_id': self.company_id.id if self.company_id else None,
-          'company_name': self.company_id.name if self.company_id else None,
-          'priority': self.priority,
-          'tag_ids': [tag.id for tag in self.tag_ids],
-          'tag_names': [tag.name for tag in self.tag_ids],
-          'create_date': str(self.create_date) if self.create_date else None,
-          'write_date': str(self.write_date) if self.write_date else None,
-      }
-      _logger.info(f"Prepared opportunity data: {data}")
+      # Combine standard and custom fields
+      fields_to_read = standard_fields + custom_fields
+     
+
+      data = []
+      for opp in opportunities:
+          opp_data = {}
+          for field in fields_to_read:
+              try:
+                  value = opp[field]
+                  opp_data[field] = self._json_serialize(value)
+              except Exception as e:
+                  opp_data[field] = str(e)
+          data.append(opp_data)
+      
       return data
 
-  def _send_opportunity_data(self):
+
+
+  def _send_opportunity_data(self, resetCU=False):
+    #   return
+    
+      if self.type != 'opportunity':
+          return
       _logger.info(f"_send_opportunity_data called for CrmLead ID: {self.id}")
       url = "https://preprod.hike-up.be/api/odoo/opportunity/hikeup"
-      data = self._prepare_opportunity_data()
+
+       # Standard fields we want to include
+      standard_fields = [
+            'id', 'display_name', 'expected_revenue', 'partner_id', "priority",
+    "probability",
+    "prorated_revenue",
+    "recurring_plan",
+    "recurring_revenue","date_deadline",
+    "recurring_revenue_monthly","stage_id","user_id","active","type"
+    
+            # Add any other standard fields you want to include
+        ]
+
+        # Get all custom fields
+      custom_fields = self.env['ir.model.fields'].search([
+      ('model', '=', 'crm.lead'),
+      ('name', 'like', 'x_%')  # Custom fields typically start with 'x_'
+      ]).mapped('name')
+
+      # Combine standard and custom fields
+      fields_to_read = standard_fields + custom_fields
+
+      data = {'id': self.id}
+      for field in fields_to_read:
+          
+              try:
+                  value = self[field]
+                  data[field] = self._json_serialize(value)
+              except Exception as e:
+                  _logger.warning(f"Error serializing field {field}: {str(e)}")
+                  data[field] = str(value) if value else None
+      _logger.info(f"resetCU: {resetCU}")
+      if resetCU:
+        data['x_catch_up_id'] = False
+        data['x_catch_up_url'] = False   
+        
+    #   check if partner_id is a company, if company on passe le flag partner_company à true sinon à false
+
       try:
+          _logger.info(f"Data to send to API: {data}")
+
           _logger.info(f"Sending data to API for CrmLead ID: {self.id}")
           response = requests.post(url, json=data, timeout=10)
           _logger.info(f"API response status code: {response.status_code}")
           response.raise_for_status()
           response_data = response.json()
           _logger.info(f"API response data: {response_data}")
+          _logger.info(f"self data id: {self.x_catch_up_id}")
+          _logger.info(f"self data url: {self.x_catch_up_url}")
+
           if 'id' in response_data:
-              self.x_catch_up_id = response_data['id']
-              _logger.info(f"Updated x_catch_up_id to {response_data['id']} for CrmLead ID: {self.id}")
-          _logger.info(f"Successfully sent opportunity data for ID {self.id}")
-      except requests.exceptions.RequestException as e:
-          _logger.error(f"Failed to send opportunity data for ID {self.id}: {e}")
-      except json.JSONDecodeError:
-          _logger.error(f"Failed to parse response from API for opportunity ID {self.id}")
+              if self.x_catch_up_id != response_data['id']:
+                  self.with_context(skip_send_opportuniy_data=True).write({'x_catch_up_id': response_data['id']})
+          if 'url' in response_data:
+              if self.x_catch_up_url != response_data['url']:
+                url2 = response_data['url']
+                url = f'<a href="{url2}">Catch Up</a>'
+                
+                self.with_context(skip_send_opportunity_data=True).write({'x_catch_up_url': url})
+         
+          
       except Exception as e:
-          _logger.error(f"Unexpected error in _send_opportunity_data for ID {self.id}: {str(e)}")
+          _logger.error(f"Error in _send_opportunity_data: {str(e)}")
+          
+  @api.model
+  def create_opportunity_from_cu(self, data):
+      _logger.info(f"create_opportunity_from_cu called with data: {data}")
+      
+      
+    #    Create a new opportunity record with the provided data and return the ID of the new record
+      try:
+        opportunity = self.with_context(skip_send_opportunity_data=True).create(data)
+        _logger.info(f"Created opportunity with ID: {opportunity.id}")
+        return {'id': opportunity.id}
+      except Exception as e:
+        error_message = f"An error occurred: {str(e)}"
+        _logger.error(error_message)
+        return {'error': error_message}
+    
+      
+        
+
 
   @api.model
+  def mass_update_opportunities(self, data):
+      _logger.info(f"Mass update opportunities called with data: {data}")
+      
+      if not isinstance(data, list):
+          return {'error': 'Expected a list of opportunities updates'}
+      
+      updated_count = 0
+      errors = []
+
+      for opportunity_data in data:
+          opportunity_id = opportunity_data.get('id')
+          update_values = {k: v for k, v in opportunity_data.items() if k != 'id'}
+          
+          if not opportunity_id or not update_values:
+              errors.append(f"Invalid data for opportunity: {opportunity_data}")
+              continue
+          
+          try:
+              opportunity = self.browse(opportunity_id)
+              if opportunity.exists():
+                  opportunity.with_context(skip_send_opportunity_data=True).write(update_values)
+                  updated_count += 1
+                  _logger.info(f"Updated opportunity ID {opportunity_id} with values: {update_values}")
+              else:
+                  errors.append(f"Opportunity with ID {opportunity_id} not found")
+          except Exception as e:
+              error_msg = f"Error updating opportunity ID {opportunity_id}: {str(e)}"
+              _logger.error(error_msg)
+              errors.append(error_msg)
+
+      result = {
+          'success': updated_count > 0,
+          'message': f'Updated {updated_count} opportunity records',
+          'updated_count': updated_count,
+      }
+      if errors:
+          result['errors'] = errors
+
+      return result
+  @api.model
   def create(self, vals):
+      if self.env.context.get('skip_send_opportunity_data') or self.env.context.get('import_file'):
+          return super(CrmLead, self).create(vals)
+      record = super(CrmLead, self).create(vals)
       _logger.info(f"CrmLead create method called with vals: {vals}")
-      try:
-          record = super(CrmLead, self).create(vals)
-          _logger.info(f"Created CrmLead record with ID: {record.id}")
-          record._send_opportunity_data()
-          return record
-      except Exception as e:
-          _logger.error(f"Error in CrmLead create method: {str(e)}")
-          raise
+      record._send_opportunity_data()
+      return record
 
   def write(self, vals):
+      _logger.info(f"self: {self.env.context.get('skip_send_opportunity_data')}")
+      if self.env.context.get('skip_send_opportunity_data') or self.env.context.get('import_file'):
+          _logger.info(f"Skipping send_opportunity_data with skip_send_opportunity_data context")
+          return super(CrmLead, self).write(vals)
+      
+      result = super(CrmLead, self).write(vals)
       _logger.info(f"CrmLead write method called for ID: {self.id} with vals: {vals}")
-      try:
-          result = super(CrmLead, self).write(vals)
-          _logger.info(f"Updated CrmLead record with ID: {self.id}")
-          self._send_opportunity_data()
-          return result
-      except Exception as e:
-          _logger.error(f"Error in CrmLead write method: {str(e)}")
-          raise
+      
+
+      self._send_opportunity_data()
+      return result
 
   def unlink(self):
       _logger.info(f"CrmLead unlink method called for IDs: {self.ids}")

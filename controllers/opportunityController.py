@@ -1,61 +1,128 @@
-from odoo import http
+from odoo import http, models, fields
 from odoo.http import request
 import json
 import requests
+import logging
+from datetime import datetime, date
+
+
+_logger = logging.getLogger(__name__)
+
 
 class OpportunityController(http.Controller):
+  
+  def _json_serialize(self, value):
+      if isinstance(value, (datetime, date)):
+          return value.isoformat()
+      if isinstance(value, models.BaseModel):
+          return value.id
+      return value
+  
+  
 
-  @http.route('/api/opportunities', type='http', auth='public', methods=['GET'], csrf=False)
+  @http.route('/api/getAllOpportunities', type='http', auth='public', methods=['GET'], csrf=False)
   def get_opportunities(self):
-      opportunities = request.env['crm.lead'].sudo().search([])
-      data = [{
-          'id': opp.id,
-          'name': opp.name,
-          'partner_id': opp.partner_id.id,
-          'email': opp.email_from,
-          'phone': opp.phone,
-          'stage_id': opp.stage_id.id,
-          'stage_name': opp.stage_id.name,
-          'expected_revenue': opp.expected_revenue,
-          'probability': opp.probability,
-          'date_deadline': str(opp.date_deadline) if opp.date_deadline else None,
-      } for opp in opportunities]
-      return http.Response(json.dumps(data), content_type='application/json')
+      try:
+          data = request.env['crm.lead'].sudo().get_all_opportunities()
+          return http.Response(json.dumps(data), content_type='application/json')
+      except Exception as e:
+          error_message = f"An error occurred: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+          return http.Response(json.dumps({'error': error_message}), content_type='application/json', status=500)
+      
 
   @http.route('/api/opportunities', type='json', auth='public', methods=['POST'], csrf=False)
   def create_opportunity(self):
-      data = json.loads(request.httprequest.data)
-      new_opp = request.env['crm.lead'].sudo().create(data)
-      self._send_opportunity_data(new_opp)
-      return {'id': new_opp.id, 'name': new_opp.name}
-
-  @http.route('/api/opportunities/<int:opp_id>', type='json', auth='public', methods=['PUT'], csrf=False)
-  def update_opportunity(self, opp_id):
-      data = json.loads(request.httprequest.data)
-      opp = request.env['crm.lead'].sudo().browse(opp_id)
-      if not opp.exists():
-          return {'error': 'Opportunity not found'}, 404
-      opp.write(data)
-      self._send_opportunity_data(opp)
-      return {'id': opp.id, 'name': opp.name}
-
-  def _send_opportunity_data(self, opportunity):
-      url = "https://preprod.hike-up.be/api/opportunity"
-      data = {
-          'id': opportunity.id,
-          'name': opportunity.name,
-          'partner_id': opportunity.partner_id.id,
-          'email': opportunity.email_from,
-          'phone': opportunity.phone,
-          'stage_id': opportunity.stage_id.id,
-          'stage_name': opportunity.stage_id.name,
-          'expected_revenue': opportunity.expected_revenue,
-          'probability': opportunity.probability,
-          'date_deadline': str(opportunity.date_deadline) if opportunity.date_deadline else None,
-      }
       try:
-          response = requests.post(url, json=data, timeout=10)
-          response.raise_for_status()
-      except requests.exceptions.RequestException as e:
-          # Log the error or handle it as needed
-          _logger.error(f"Failed to send opportunity data: {e}")
+          data = json.loads(request.httprequest.data)
+          result = request.env['crm.lead'].sudo().createOpportunity(data)
+          return http.Response(json.dumps(result), content_type='application/json', status=201)
+      except Exception as e:
+        error_message = f"An error occurred: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+        return http.Response(json.dumps({'error': error_message}), content_type='application/json', status=500)
+    
+
+  
+
+  @http.route('/api/opportunity_stages', type='http', auth='public', methods=['GET'], csrf=False)
+  def get_opportunity_stages(self):
+      stages = request.env['crm.stage'].sudo().search([])
+      fields = request.env['crm.stage'].sudo().fields_get()
+      blacklist = [
+        ]
+      data = []
+      for stage in stages:
+            stage_data = {}
+            for field in fields:
+                if field not in blacklist:
+                    try:
+                        value = stage[field]
+                        stage_data[field] = self._json_serialize(value)
+                    except Exception as e:
+                        stage_data[field] = str(e)
+            data.append(stage_data)
+      
+
+      
+      return http.Response(json.dumps(data), content_type='application/json')
+  
+  @http.route('/api/mass_update_opportunities', type='json', auth='public', methods=['POST'])
+  def mass_update_opportunities(self, **post):
+      _logger.info("mass_update_opportunities controller method called")
+      try:
+          data = json.loads(request.httprequest.data).get('data')
+       
+          _logger.info(f"Received data: {data}")
+          
+          if not isinstance(data, list):
+              _logger.warning("Invalid data format: expected a list")
+              return {'error': 'Expected a list of opportunity updates'}
+
+          _logger.info("Calling crm.lead.mass_update_opportunities")
+          result = request.env['crm.lead'].sudo().mass_update_opportunities(data)
+          _logger.info(f"Result from mass_update_opportunities: {result}")
+          
+          return result
+      except Exception as e:
+          _logger.exception("Exception in mass_update_opportunities controller")
+          error_message = f"An error occurred: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+          return {'error': error_message}
+      
+  @http.route('/api/create_opportunity_from_cu', type='json', auth='public', methods=['POST'])
+  def create_opportunity_from_cu(self, **post):
+      _logger.info("create_opportunity_from_cu controller method called")
+      try:
+          data = json.loads(request.httprequest.data).get('data')
+       
+          _logger.info(f"Received data 444444444444444444444444444444444444444: {data}")
+          
+          
+
+          
+          
+          if data['companyData'] and 'parent_id' not in data['companyData']:
+            # create company
+            company = request.env['res.partner'].sudo().create_company_cu(data['companyData'])
+            _logger.info(f"Created company with ID: {company['id']}")
+            data['opportunityData']['partner_id'] = company['id']
+            
+        #   if data['companyData'] and 'parent_id' in data['companyData']:
+           
+        #     data['opportunityData']['partner_id'] = company['id']
+            
+          if data['contactData'] and 'parent_id' not in data['contactData']:
+            # create contact
+            data['contactData']['parent_id'] = company['id']
+            contact = request.env['res.partner'].sudo().create_contact(data['contactData'])
+            _logger.info(f"Created contact with ID: {contact['id']}")
+            data['opportunityData']['partner_id'] = contact['id']
+            
+            
+          _logger.info("Calling crm.lead.create_opportunity_from_cu")  
+          result = request.env['crm.lead'].sudo().create_opportunity_from_cu(data['opportunityData'])
+          _logger.info(f"Result from create_opportunity_from_cu: {result}")
+          
+          return result
+      except Exception as e:
+          _logger.exception("Exception in create_opportunity_from_cu controller")
+          error_message = f"An error occurred: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
+          return {'error': error_message}

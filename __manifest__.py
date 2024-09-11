@@ -13,6 +13,8 @@
   'data': [
       'security/ir.model.access.csv',
       'views/res_partners.xml',
+      'views/crm_leads.xml',
+      'data/system_parameters.xml'
   ],
   'depends': ['base', 'contacts', 'crm'],
   'installable': True,

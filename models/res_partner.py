@@ -1,150 +1,219 @@
-from odoo import http, fields, api
-from odoo.http import request
+from odoo import models, fields, api
+from datetime import date, datetime
 import requests
 import json
 import logging
 
 _logger = logging.getLogger(__name__)
 
-
 class ResPartner(models.Model):
   _inherit = 'res.partner'
 
   x_catch_up_id = fields.Char(string='Catch Up ID', readonly=True)
-  x_catch_up_url = fields.Char(string='Catch Up Url', readonly=True)
+  x_catch_up_url = fields.Html(string='Catch Up Url', readonly=True)
 
-  def get_companies(self):
+  def _json_serialize(self, value):
+      if isinstance(value, (datetime, date)):
+          return value.isoformat()
+      if isinstance(value, models.BaseModel):
+          return value.id
+      return value
+
+  def _send_partner_data(self, forceUpdateCU=False):
+    #   return
+      _logger.info(f"_send_partner_data called for ResPartner ID: {self.id}")
+    #   cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
+      url = "https://preprod.hike-up.be/api/odoo/partner/hikeup"
+
+      # Standard fields we want to include
+      standard_fields = [
+            'id', 'name', 'email', 'phone', 'mobile', 'street', 'city', 'zip', 'country_id',
+            'company_type','is_company','website', 'parent_id', 'type', 'user_id', 'vat', 'lang', 'active'
+            # Add any other standard fields you want to include
+        ]
+
+        # Get all custom fields
+      custom_fields = self.env['ir.model.fields'].search([
+      ('model', '=', 'res.partner'),
+      ('name', 'like', 'x_%')  # Custom fields typically start with 'x_'
+      ]).mapped('name')
+
+      # Combine standard and custom fields
+      fields_to_read = standard_fields + custom_fields
+
+      data = {'id': self.id}
+      for field in fields_to_read:
+          
+              try:
+                  value = self[field]
+                  data[field] = self._json_serialize(value)
+              except Exception as e:
+                  _logger.warning(f"Error serializing field {field}: {str(e)}")
+                  data[field] = str(value) if value else None
+      _logger.info(f"resetCU: {forceUpdateCU}")
+      if forceUpdateCU:
+        data['forceUpdateCu'] = True
+
       try:
-        
-          
-          companies = request.env['res.partner'].sudo().search([('is_company', '=', True)])
-          partner_model = request.env['ir.model'].sudo().search([('name', '=', 'res.partner')])
+          _logger.info(f"Data to send to API: {data}")
 
-          partner_fields = request.env['ir.model.fields'].sudo().search([('model_id', '=', partner_model.id)])
-          _logger.info(f"partner_fields: {partner_fields}")
-          
-          blacklist = [
-              'image_1920', 'image_1024', 'image_512', 'image_256', 'image_128',
-              'avatar_1920', 'avatar_1024', 'avatar_512', 'avatar_256', 'avatar_128',
-          ]
-          
-          data = []
-          for company in companies:
-              company_data = {}
-              for field in partner_fields:
-                  if field not in blacklist:
-                      try:
-                          value = company[field]
-                          company_data[field] = self._json_serialize(value)
-                      except Exception as e:
-                          company_data[field] = str(e)
-              
-            
-              
-              data.append(company_data)
-          
-          return http.Response(json.dumps(data), content_type='application/json')
-      except Exception as e:
-          error_message = f"An error occurred: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-          return http.Response(json.dumps({'error': error_message}), content_type='application/json', status=500)
-
-  def send_to_catch_up(self):
-      _logger.info(f"send_to_catch_up called for ResPartner ID: {self.id}")
-      url = "https://preprod.hike-up.be/api/odoo/contact/hikeup"
-
-      partners = self.env['res.partner'].sudo().search([('is_company', '=', True)])
-
-      data = {
-          'id': self.id,
-          'x_catch_up_id': self.x_catch_up_id,
-          'name': self.name,
-          'email': self.email,
-          'phone': self.phone,
-          'mobile': self.mobile,
-          'function': self.function,
-          'company_id': self.company_id.id if self.company_id else None,
-          'company_name': self.company_id.name if self.company_id else None,
-          'create_date': str(self.create_date) if self.create_date else None,
-          'write_date': str(self.write_date) if self.write_date else None,
-      }
-      try:
           _logger.info(f"Sending data to API for ResPartner ID: {self.id}")
           response = requests.post(url, json=data, timeout=10)
           _logger.info(f"API response status code: {response.status_code}")
           response.raise_for_status()
           response_data = response.json()
           _logger.info(f"API response data: {response_data}")
+          _logger.info(f"self data id: {self.x_catch_up_id}")
+          _logger.info(f"self data url: {self.x_catch_up_url}")
+
           if 'id' in response_data:
-              self.x_catch_up_id = response_data['id']
-              _logger.info(f"Updated x_catch_up_id to {response_data['id']} for ResPartner ID: {self.id}")
-          _logger.info(f"Successfully sent data for ID {self.id}")
-      except requests.exceptions.RequestException as e:
-          _logger.error(f"Failed to send data for ID {self.id}: {e}")
-      except json.JSONDecodeError:
-          _logger.error(f"Failed to parse response from API for ID {self.id}")
+              if self.x_catch_up_id != response_data['id']:
+                  self.with_context(skip_send_partner_data=True).write({'x_catch_up_id': response_data['id']})
+          if 'url' in response_data:
+              if self.x_catch_up_url != response_data['url']:
+                url2 = response_data['url']
+                url = f'<a href="{url2}">Catch Up</a>'
+                
+                self.with_context(skip_send_partner_data=True).write({'x_catch_up_url': url})
+         
+          
       except Exception as e:
-          _logger.error(f"Unexpected error in send_to_catch_up for ID {self.id}: {str(e)}")
+          _logger.error(f"Error in _send_partner_data: {str(e)}")
 
+  @api.model
+  def get_all_companies(self):
+      companies = self.search([('is_company', '=', True)])
+      return self._get_partner_data(companies)
 
+  @api.model
+  def get_all_contacts(self):
+      contacts = self.search([('is_company', '=', False)])
+      return self._get_partner_data(contacts)
 
+  def _get_partner_data(self, partners):
+      # Standard fields we want to include
+      standard_fields = [
+            'id', 'name', 'email', 'phone', 'mobile', 'street', 'city', 'zip', 'country_id',
+            'company_type','is_company','website', 'parent_id', 'type', 'user_id', 'vat', 'lang', 'active'
+            # Add any other standard fields you want to include
+        ]
 
-#       _logger.info(f"_send_opportunity_data called for CrmLead ID: {self.id}")
-#       url = "https://preprod.hike-up.be/api/odoo/opportunity/hikeup"
-#       data = self._prepare_opportunity_data()
-#       try:
-#           _logger.info(f"Sending data to API for CrmLead ID: {self.id}")
-#           response = requests.post(url, json=data, timeout=10)
-#           _logger.info(f"API response status code: {response.status_code}")
-#           response.raise_for_status()
-#           response_data = response.json()
-#           _logger.info(f"API response data: {response_data}")
-#           if 'id' in response_data:
-#               self.x_catch_up_id = response_data['id']
-#               _logger.info(f"Updated x_catch_up_id to {response_data['id']} for CrmLead ID: {self.id}")
-#           _logger.info(f"Successfully sent opportunity data for ID {self.id}")
-#       except requests.exceptions.RequestException as e:
-#           _logger.error(f"Failed to send opportunity data for ID {self.id}: {e}")
-#       except json.JSONDecodeError:
-#           _logger.error(f"Failed to parse response from API for opportunity ID {self.id}")
-#       except Exception as e:
-#           _logger.error(f"Unexpected error in _send_opportunity_data for ID {self.id}: {str(e)}")
+        # Get all custom fields
+      custom_fields = self.env['ir.model.fields'].search([
+      ('model', '=', 'res.partner'),
+      ('name', 'like', 'x_%')  # Custom fields typically start with 'x_'
+      ]).mapped('name')
+
+      # Combine standard and custom fields
+      fields_to_read = standard_fields + custom_fields
+
+      data = []
+      for partner in partners:
+          partner_data = {}
+          for field in fields_to_read:
+              try:
+                  value = partner[field]
+                  partner_data[field] = self._json_serialize(value)
+              except Exception as e:
+                  partner_data[field] = str(e)
+          data.append(partner_data)
+      
+      return data
+
+  @api.model
+  def create_company_cu(self, data):
+      data['is_company'] = True
+      return self.create_partner(data)
+
+  @api.model
+  def create_contact(self, data):
+      data['is_company'] = False
+      return self.create_partner(data)
+
+  @api.model
+  def create_partner(self, data):
+      new_partner = self.create(data)
+      return {'id': new_partner.id, 'name': new_partner.name}
+
+  def update_company(self, data):
+      return self.update_partner(data, is_company=True)
+
+  def update_contact(self, data):
+      return self.update_partner(data, is_company=False)
+
+  def update_partner(self, data, is_company):
+      if not self.exists() or self.is_company != is_company:
+          return {'error': 'Partner not found'}, 404
+      self.with_context(skip_send_partner_data=True).write(data)
+      return {'id': self.id, 'name': self.name}
+  @api.model
+  def mass_update_partners(self, data):
+      _logger.info(f"Mass update partners called with data: {data}")
+      
+      if not isinstance(data, list):
+          return {'error': 'Expected a list of partner updates'}
+      
+      updated_count = 0
+      errors = []
+
+      for partner_data in data:
+          partner_id = partner_data.get('id')
+          update_values = {k: v for k, v in partner_data.items() if k != 'id'}
+          url = update_values.get('x_catch_up_url')
+          update_values['x_catch_up_url'] = f'<a href="{url}">Catch Up</a>'
+          
+          if not partner_id or not update_values:
+              errors.append(f"Invalid data for partner: {partner_data}")
+              continue
+          
+          try:
+              partner = self.browse(partner_id)
+              if partner.exists():
+                  partner.with_context(skip_send_partner_data=True).write(update_values)
+                  updated_count += 1
+                  _logger.info(f"Updated partner ID {partner_id} with values: {update_values}")
+              else:
+                  errors.append(f"Partner with ID {partner_id} not found")
+          except Exception as e:
+              error_msg = f"Error updating partner ID {partner_id}: {str(e)}"
+              _logger.error(error_msg)
+              errors.append(error_msg)
+
+      result = {
+          'success': updated_count > 0,
+          'message': f'Updated {updated_count} partner records',
+          'updated_count': updated_count,
+      }
+      if errors:
+          result['errors'] = errors
+
+      return result
 
   @api.model
   def create(self, vals):
+      if self.env.context.get('skip_send_partner_data') or self.env.context.get('import_file'):
+          return super(ResPartner, self).create(vals)
       record = super(ResPartner, self).create(vals)
-      _logger.info(f"CrmLead create method called with vals: {vals}")
-      try:
-          _logger.info(f"Created CrmLead record with ID: {record.id}")
-          record._send_opportunity_data()
-          return record
-      except Exception as e:
-          _logger.error(f"Error in CrmLead create method: {str(e)}")
-          raise
+      _logger.info(f"ResPartner create method called with vals: {vals}")
+      record._send_partner_data(True)
+      return record
 
   def write(self, vals):
-      _logger.info(f"CrmLead write method called for ID: {self.id} with vals: {vals}")
-      try:
-          result = super(CrmLead, self).write(vals)
-          _logger.info(f"Updated CrmLead record with ID: {self.id}")
-          self._send_opportunity_data()
-          return result
-      except Exception as e:
-          _logger.error(f"Error in CrmLead write method: {str(e)}")
-          raise
-
-  def unlink(self):
-      _logger.info(f"CrmLead unlink method called for IDs: {self.ids}")
-      for record in self:
-          if record.x_catch_up_id:
-              url = f"https://preprod.hike-up.be/api/odoo/opportunity/hikeup/{record.x_catch_up_id}"
-              try:
-                  _logger.info(f"Sending delete request for CrmLead ID: {record.id}")
-                  response = requests.delete(url, timeout=10)
-                  _logger.info(f"Delete request response status code: {response.status_code}")
-                  response.raise_for_status()
-                  _logger.info(f"Successfully sent delete request for opportunity ID {record.id}")
-              except requests.exceptions.RequestException as e:
-                  _logger.error(f"Failed to send delete request for opportunity ID {record.id}: {e}")
-              except Exception as e:
-                  _logger.error(f"Unexpected error in unlink method for ID {record.id}: {str(e)}")
-      return super(CrmLead, self).unlink()
+      
+      _logger.info(f"self: {self.env.context.get('skip_send_partner_data')}")
+      if self.env.context.get('skip_send_partner_data') or self.env.context.get('import_file'):
+          _logger.info(f"Skipping send_partner_data with skip_send_partner_data context")
+          return super(ResPartner, self).write(vals)
+      
+      result = super(ResPartner, self).write(vals)
+      _logger.info(f"ResPartner write method called for ID: {self.id} with vals: {vals}")
+      _logger.info(f"111111111111111111111111: {vals.get('is_company')}")
+      _logger.info(f"222222222222222222222: {self.is_company}")
+    #   if self.is_company :
+    #       _logger.info(f"Skipping send_partner_data with x_catch_up_id because is_company field changed")
+    #       self._send_partner_data(True)
+    #   else:
+    #       self._send_partner_data()
+      self._send_partner_data()
+      return result
+    
