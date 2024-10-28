@@ -4,6 +4,8 @@ import json
 import requests
 import logging
 from datetime import datetime, date
+from ..utils import require_api_key
+
 
 
 _logger = logging.getLogger(__name__)
@@ -21,6 +23,7 @@ class OpportunityController(http.Controller):
   
 
   @http.route('/api/getAllOpportunities', type='http', auth='public', methods=['GET'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def get_opportunities(self):
       try:
           data = request.env['crm.lead'].sudo().get_all_opportunities()
@@ -31,6 +34,7 @@ class OpportunityController(http.Controller):
       
 
   @http.route('/api/opportunities', type='json', auth='public', methods=['POST'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def create_opportunity(self):
       try:
           data = json.loads(request.httprequest.data)
@@ -44,6 +48,7 @@ class OpportunityController(http.Controller):
   
 
   @http.route('/api/opportunity_stages', type='http', auth='public', methods=['GET'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def get_opportunity_stages(self):
       stages = request.env['crm.stage'].sudo().search([])
       fields = request.env['crm.stage'].sudo().fields_get()
@@ -66,6 +71,7 @@ class OpportunityController(http.Controller):
       return http.Response(json.dumps(data), content_type='application/json')
   
   @http.route('/api/mass_update_opportunities', type='json', auth='public', methods=['POST'])
+  @require_api_key  # This decorator will check for the API key
   def mass_update_opportunities(self, **post):
       _logger.info("mass_update_opportunities controller method called")
       try:
@@ -88,6 +94,7 @@ class OpportunityController(http.Controller):
           return {'error': error_message}
       
   @http.route('/api/create_opportunity_from_cu', type='json', auth='public', methods=['POST'])
+  @require_api_key  # This decorator will check for the API key
   def create_opportunity_from_cu(self, **post):
       _logger.info("create_opportunity_from_cu controller method called")
       try:
@@ -99,7 +106,7 @@ class OpportunityController(http.Controller):
 
           
           
-          if data['companyData'] and 'parent_id' not in data['companyData']:
+          if data['companyData'] and 'partner_id' not in data['companyData']:
             # create company
             company = request.env['res.partner'].sudo().create_company_cu(data['companyData'])
             _logger.info(f"Created company with ID: {company['id']}")
@@ -109,7 +116,7 @@ class OpportunityController(http.Controller):
            
         #     data['opportunityData']['partner_id'] = company['id']
             
-          if data['contactData'] and 'parent_id' not in data['contactData']:
+          if data['contactData'] and 'partner_id' not in data['contactData']:
             # create contact
             data['contactData']['parent_id'] = company['id']
             contact = request.env['res.partner'].sudo().create_contact(data['contactData'])

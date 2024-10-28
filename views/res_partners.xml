@@ -7,6 +7,17 @@
             <field name="model">res.partner</field>
             <field name="inherit_id" ref="base.view_partner_form"/>
             <field name="arch" type="xml">
+               <xpath expr="//div[hasclass('oe_title')]//h1" position="before">
+                
+                    <h1>
+                        <field  options="{'line_breaks': False}" widget="field_partner_autocomplete" class="text-break" name="x_catch_up_first_name" default_focus="1" placeholder="First Name" invisible="is_company"  />
+                    </h1>
+               </xpath>
+               <xpath expr="//div[hasclass('oe_title')]//h1//field[@name='name'][2]" position="attributes">
+                 <attribute name="placeholder">Last Name</attribute>
+
+                </xpath>
+
                 <field name="category_id" position="after">
                     <field name="x_catch_up_url" />
                 </field>

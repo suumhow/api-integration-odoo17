@@ -1,6 +1,6 @@
 {
   'name': 'API Integration',
-  'version': '1.28',
+  'version': '1.29',
   'category': 'Tools',
   'summary': 'Custom API endpoints for data retrieval',
   'description': """
@@ -13,7 +13,7 @@
   'data': [
       'security/ir.model.access.csv',
       'views/res_partners.xml',
-      'views/crm_leads.xml',
+      # 'views/crm_leads.xml',
       'data/system_parameters.xml'
   ],
   'depends': ['base', 'contacts', 'crm'],

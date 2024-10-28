@@ -6,6 +6,7 @@ import json
 import traceback
 import logging
 import random
+from ..utils import require_api_key
 # from faker import Faker
 
 
@@ -14,6 +15,7 @@ _logger = logging.getLogger(__name__)
 class PartnerController(http.Controller):
 
   @http.route('/api/getAllCompanies', type='http', auth='public', methods=['GET'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def get_partners(self):
       try:
           data = request.env['res.partner'].sudo().get_all_companies()
@@ -23,6 +25,7 @@ class PartnerController(http.Controller):
           return http.Response(json.dumps({'error': error_message}), content_type='application/json', status=500)
 
   @http.route('/api/getAllContacts', type='http', auth='public', methods=['GET'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def get_contacts(self):
       try:
           data = request.env['res.partner'].sudo().get_all_contacts()
@@ -32,6 +35,7 @@ class PartnerController(http.Controller):
           return http.Response(json.dumps({'error': error_message}), content_type='application/json', status=500)
 
   @http.route('/api/createCompany', type='json', auth='public', methods=['POST'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def create_company_cu(self):
       try:
           data = json.loads(request.httprequest.data)
@@ -44,6 +48,7 @@ class PartnerController(http.Controller):
 
 
   @http.route('/api/createContact', type='json', auth='public', methods=['POST'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def create_contact(self):
       try:
           data = json.loads(request.httprequest.data)
@@ -54,6 +59,7 @@ class PartnerController(http.Controller):
           return http.Response(json.dumps({'error': error_message}), content_type='application/json', status=500)
 
   @http.route('/api/updatePartner/<int:partner_id>', type='json', auth='public', methods=['PUT'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def update_partner(self, partner_id):
       try:
           data = json.loads(request.httprequest.data)
@@ -65,6 +71,7 @@ class PartnerController(http.Controller):
           return http.Response(json.dumps({'error': error_message}), content_type='application/json', status=500)
 
   @http.route('/api/deletePartner/<int:partner_id>', type='http', auth='public', methods=['DELETE'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def delete_partner(self, partner_id):
       try:
           partner = request.env['res.partner'].sudo().browse(partner_id)
@@ -79,6 +86,7 @@ class PartnerController(http.Controller):
 
 
   @http.route('/api/mass_update_partners', type='json', auth='public', methods=['POST'])
+  @require_api_key  # This decorator will check for the API key
   def mass_update_partners(self, **post):
       _logger.info("mass_update_partners controller method called")
       try:
@@ -104,15 +112,16 @@ class PartnerController(http.Controller):
   def get_mappable_fields(self):
     #   get the custom fields of type char and text not in blacklist fields
         blacklist = ['x_catch_up_id', 'x_catch_up_url'] # fields to exclude
-        custom_fields = request.env['ir.model.fields'].search([
+        custom_fields = request.env['ir.model.fields'].sudo().search([
             ('model', '=', 'res.partner'),
             ('name', 'like', 'x_%'),  # Custom fields typically start with 'x_'
+            ('state', '=', 'manual'),
             # ('ttype', 'in', ['char', 'text','b'])
         ])
         data = []
         for field in custom_fields:
             if field.name not in blacklist:
-                data.append({'name': field.name, 'type': field.ttype})
+                data.append({'name': field.name, 'type': field.ttype, 'label': field.field_description, 'required': field.required, 'readonly': field.readonly, 'help': field.help})
             
         return http.Response(json.dumps(data), content_type='application/json')
  
@@ -122,6 +131,7 @@ class PartnerController(http.Controller):
         
       
   @http.route('/api/add_partners', type='http', auth='public', methods=['GET'], csrf=False)
+  @require_api_key  # This decorator will check for the API key
   def add_partners(self):
       try:
     

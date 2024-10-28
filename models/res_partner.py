@@ -10,6 +10,7 @@ class ResPartner(models.Model):
   _inherit = 'res.partner'
 
   x_catch_up_id = fields.Char(string='Catch Up ID', readonly=True)
+  x_catch_up_first_name = fields.Char(string='First name')
   x_catch_up_url = fields.Html(string='Catch Up Url', readonly=True)
 
   def _json_serialize(self, value):
@@ -19,11 +20,11 @@ class ResPartner(models.Model):
           return value.id
       return value
 
-  def _send_partner_data(self, forceUpdateCU=False):
+  def _send_partner_data(self, forceUpdateCU=False,unlink=False):
     #   return
       _logger.info(f"_send_partner_data called for ResPartner ID: {self.id}")
-    #   cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
-      url = "https://preprod.hike-up.be/api/odoo/partner/hikeup"
+      cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
+      url = "https://preprod.hike-up.be/api/odoo/partner/" + cu_schema_param
 
       # Standard fields we want to include
       standard_fields = [
@@ -53,6 +54,8 @@ class ResPartner(models.Model):
       _logger.info(f"resetCU: {forceUpdateCU}")
       if forceUpdateCU:
         data['forceUpdateCu'] = True
+      if unlink:
+        data['active'] = False
 
       try:
           _logger.info(f"Data to send to API: {data}")
@@ -65,6 +68,9 @@ class ResPartner(models.Model):
           _logger.info(f"API response data: {response_data}")
           _logger.info(f"self data id: {self.x_catch_up_id}")
           _logger.info(f"self data url: {self.x_catch_up_url}")
+          
+          if 'unlink' in response_data:
+              return
 
           if 'id' in response_data:
               if self.x_catch_up_id != response_data['id']:
@@ -216,4 +222,7 @@ class ResPartner(models.Model):
     #       self._send_partner_data()
       self._send_partner_data()
       return result
+  def unlink(self):
+      self._send_partner_data(False,True)
+      return super(ResPartner, self).unlink()
     

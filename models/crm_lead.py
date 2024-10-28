@@ -69,7 +69,8 @@ class CrmLead(models.Model):
       if self.type != 'opportunity':
           return
       _logger.info(f"_send_opportunity_data called for CrmLead ID: {self.id}")
-      url = "https://preprod.hike-up.be/api/odoo/opportunity/hikeup"
+      cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
+      url = "https://preprod.hike-up.be/api/odoo/opportunity/" + cu_schema_param
 
        # Standard fields we want to include
       standard_fields = [
@@ -78,7 +79,7 @@ class CrmLead(models.Model):
     "prorated_revenue",
     "recurring_plan",
     "recurring_revenue","date_deadline",
-    "recurring_revenue_monthly","stage_id","user_id","active","type"
+    "recurring_revenue_monthly","stage_id","user_id","active","type","lost_reason_id"
     
             # Add any other standard fields you want to include
         ]
@@ -98,6 +99,10 @@ class CrmLead(models.Model):
               try:
                   value = self[field]
                   data[field] = self._json_serialize(value)
+                  if field == 'lost_reason_id':
+                    # get the lost reason name from the id 
+                    lost_reason = self.env['crm.lost.reason'].search([('id', '=', self._json_serialize(value))])
+                    data['lost_reason_name'] = lost_reason.name
               except Exception as e:
                   _logger.warning(f"Error serializing field {field}: {str(e)}")
                   data[field] = str(value) if value else None
@@ -216,10 +221,11 @@ class CrmLead(models.Model):
       return result
 
   def unlink(self):
+      cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
       _logger.info(f"CrmLead unlink method called for IDs: {self.ids}")
       for record in self:
           if record.x_catch_up_id:
-              url = f"https://preprod.hike-up.be/api/odoo/opportunity/hikeup/{record.x_catch_up_id}"
+              url = f"https://preprod.hike-up.be/api/odoo/opportunity/{cu_schema_param}/{record.x_catch_up_id}"
               try:
                   _logger.info(f"Sending delete request for CrmLead ID: {record.id}")
                   response = requests.delete(url, timeout=10)
@@ -231,3 +237,4 @@ class CrmLead(models.Model):
               except Exception as e:
                   _logger.error(f"Unexpected error in unlink method for ID {record.id}: {str(e)}")
       return super(CrmLead, self).unlink()
+  

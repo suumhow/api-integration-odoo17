@@ -20,7 +20,8 @@ class ResUsers(models.Model):
 
   def _send_user_data(self):
       _logger.info(f"_send_partner_data called for ResUsers ID: {self.id}")
-      url = "https://preprod.hike-up.be/api/odoo/user/hikeup"
+      cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
+      url = "https://preprod.hike-up.be/api/odoo/user/" + cu_schema_param
 
       # Get all fields of the model
       all_fields = self.fields_get().keys()
