@@ -11,6 +11,7 @@ class ResPartner(models.Model):
 
   x_catch_up_id = fields.Char(string='Catch Up ID', readonly=True)
   x_catch_up_first_name = fields.Char(string='First name')
+  x_catch_up_owner_id = fields.Char(string='Owner Id', readonly=True)
   x_catch_up_url = fields.Html(string='Catch Up Url', readonly=True)
 
   def _json_serialize(self, value):
@@ -24,7 +25,7 @@ class ResPartner(models.Model):
     #   return
       _logger.info(f"_send_partner_data called for ResPartner ID: {self.id}")
       cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
-      url = "https://preprod.hike-up.be/api/odoo/partner/" + cu_schema_param
+      url = "https://app.catch-up.be/api/odoo/partner/" + cu_schema_param
 
       # Standard fields we want to include
       standard_fields = [

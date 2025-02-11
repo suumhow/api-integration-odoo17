@@ -70,7 +70,7 @@ class CrmLead(models.Model):
           return
       _logger.info(f"_send_opportunity_data called for CrmLead ID: {self.id}")
       cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
-      url = "https://preprod.hike-up.be/api/odoo/opportunity/" + cu_schema_param
+      url = "https://app.catch-up.be/api/odoo/opportunity/" + cu_schema_param
 
        # Standard fields we want to include
       standard_fields = [
@@ -225,7 +225,7 @@ class CrmLead(models.Model):
       _logger.info(f"CrmLead unlink method called for IDs: {self.ids}")
       for record in self:
           if record.x_catch_up_id:
-              url = f"https://preprod.hike-up.be/api/odoo/opportunity/{cu_schema_param}/{record.x_catch_up_id}"
+              url = f"https://app.catch-up.be/api/odoo/opportunity/{cu_schema_param}/{record.x_catch_up_id}"
               try:
                   _logger.info(f"Sending delete request for CrmLead ID: {record.id}")
                   response = requests.delete(url, timeout=10)

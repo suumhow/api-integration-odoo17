@@ -21,7 +21,7 @@ class ResUsers(models.Model):
   def _send_user_data(self):
       _logger.info(f"_send_partner_data called for ResUsers ID: {self.id}")
       cu_schema_param = self.env["ir.config_parameter"].get_param("cu_schema_params", False)
-      url = "https://preprod.hike-up.be/api/odoo/user/" + cu_schema_param
+      url = "https://app.catch-up.be/api/odoo/user/" + cu_schema_param
 
       # Get all fields of the model
       all_fields = self.fields_get().keys()
@@ -113,7 +113,7 @@ class ResUsers(models.Model):
       return record
 
   def write(self, vals):
-      _logger.info(f"ResUsers write method called for ID: {self.id} with vals: {vals}")
+      _logger.info(f"ResUsers write method called for ID: {self.ids} with vals: {vals}")
       result = super(ResUsers, self).write(vals)
-      self._send_user_data()
+    #   self._send_user_data()
       return result

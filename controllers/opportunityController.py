@@ -3,6 +3,7 @@ from odoo.http import request
 import json
 import requests
 import logging
+import traceback
 from datetime import datetime, date
 from ..utils import require_api_key
 
